@@ -1,6 +1,8 @@
-"streamlit"
-"fastapi[standard]"
-"uvicorn"
-"requests"
-"python-dotenv"
-"google-genai"
+streamlit
+fastapi[standard]
+uvicorn
+requests
+python-dotenv
+google-genai
+yfinance
+sqlalchemy
