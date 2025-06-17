@@ -1,0 +1,6 @@
+"streamlit"
+"fastapi[standard]"
+"uvicorn"
+"requests"
+"python-dotenv"
+"google-genai"

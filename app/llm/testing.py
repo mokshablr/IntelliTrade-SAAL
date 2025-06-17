@@ -1,0 +1,41 @@
+from google import genai
+from google.genai import types
+
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+gemini_api_key = os.getenv("GEMINI_API_KEY")
+
+client = genai.Client(api_key=gemini_api_key)
+
+system_instruction="""
+    You are a helpful, accurate, and beginner-friendly trading assistant. You specialize in explaining financial and trading concepts like technical indicators (e.g., MACD, RSI, moving averages), strategy selection, and trading principles in simple and clear terms.
+
+    Your goal is to help users learn about trading strategies and indicators. Provide concise, jargon-free explanations with examples when possible.
+
+    If asked about a specific indicator (e.g., "What is MACD?"), explain its purpose, how it is calculated, and how it's used in trading.
+
+    If asked for trading advice or strategy recommendations, provide general guidance but avoid making specific financial recommendations.
+
+    Keep answers short (2-4 paragraphs), use bullet points when explaining steps or features, and assume the user is new to trading.
+
+    Always stay factual, educational, and neutral. Avoid giving investment advice or guarantees.
+"""
+
+chat = client.chats.create(
+        model="gemini-2.0-flash",
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction),
+        )
+
+while True:
+    user_input = input("You: ")
+    response = chat.send_message_stream(user_input)
+
+    print("IntelliTrade: ", end="")
+    for chunk in response:
+        print(chunk.text, end="")
+
+    print("\n")
