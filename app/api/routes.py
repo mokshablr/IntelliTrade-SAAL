@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.llm.generate import generate_response
-from app.data.ingest import ingest_stock
+from app.data.ingest import ingest_stock, ingest_crypto
 
 router = APIRouter()
 
@@ -10,6 +10,9 @@ class LLMRequest(BaseModel):
     user_input: str
 
 class IngestStockData(BaseModel):
+    symbol: str
+
+class IngestCryptoData(BaseModel):
     symbol: str
 
 @router.get("/")
@@ -35,4 +38,10 @@ def llm_generate(llm_input: LLMRequest):
 def ingest_stock_route(ingest_details: IngestStockData):
     symbol = ingest_details.symbol
     ingest_stock(symbol)
-    return {"status": "Data ingested successfully"}
+    return {"status": "Stock data ingested successfully"}
+
+@router.get("/ingest-crypto")
+def ingest_crypto_route(ingest_details: IngestCryptoData):
+    symbol = ingest_details.symbol
+    ingest_crypto(symbol)
+    return {"status": "Crypto data ingested successfully"}
