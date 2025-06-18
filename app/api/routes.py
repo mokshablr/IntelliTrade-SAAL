@@ -11,8 +11,6 @@ class LLMRequest(BaseModel):
 
 class IngestStockData(BaseModel):
     symbol: str
-    start: str
-    end: str
 
 @router.get("/")
 def welcome():
@@ -36,8 +34,5 @@ def llm_generate(llm_input: LLMRequest):
 @router.get("/ingest-stock")
 def ingest_stock_route(ingest_details: IngestStockData):
     symbol = ingest_details.symbol
-    start = ingest_details.start
-    end = ingest_details.end
-
-    ingest_stock(symbol, start, end)
+    ingest_stock(symbol)
     return {"status": "Data ingested successfully"}
