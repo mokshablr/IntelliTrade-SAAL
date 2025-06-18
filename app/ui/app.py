@@ -10,9 +10,9 @@ load_dotenv()
 
 llm_api_endpoint = os.getenv("LLM_API_ENDPOINT")
 
-st.write("hi loves LLMs! 🤖 [Build your own chat app](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps) in minutes, then make it powerful by adding images, dataframes, or even input widgets to the chat.")
+st.write("Welcome to IntelliTrade!")
 
-st.caption("Note that this demo app isn't actually connected to any LLMs. Those are expensive ;)")
+st.caption("Use this chatbot to learn about trading and use it as your trading assistant.")
 
 # Initialize chat history
 if "messages" not in st.session_state:
@@ -41,8 +41,11 @@ if prompt := st.chat_input("What is up?"):
                 }
 
         try: 
-            response = requests.post(llm_api_endpoint, json=payload)
-            data = response.json()
+            if llm_api_endpoint == None or llm_api_endpoint == "":
+                data = { "message": "This chatbot is not connected to an LLM." }
+            else:
+                response = requests.post(llm_api_endpoint, json=payload)
+                data = response.json()
 
             if "message" in data:
                 assistant_response = data["message"]
