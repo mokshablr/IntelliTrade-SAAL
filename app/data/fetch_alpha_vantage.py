@@ -23,7 +23,7 @@ def fetch_stock_data(symbol="AAPL"):
         raise RuntimeError(f"Alpha Vantage API error {response.status_code}: {response.text}")
 
     data = response.json()
-    print(data)  # Remove or comment this in production
+    #print(data)  # Remove or comment this in production
 
     if "Time Series (Daily)" not in data:
         raise ValueError(f"No data found for symbol '{symbol}'. API message: {data.get('Note') or data.get('Error Message') or data}")
