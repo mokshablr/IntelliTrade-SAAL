@@ -76,9 +76,13 @@ def fetch_crypto_data(symbol="BTC"):
     # Rename columns to simplified names and convert to float
     df = df.rename(columns={
         "1a. open (USD)": "open",
+        "1. open": "open",
         "2a. high (USD)": "high",
+        "2. high": "high",
         "3a. low (USD)": "low",
+        "3. low": "low",
         "4a. close (USD)": "close",
+        "4. close": "close",
         "5. volume": "volume",
         "6. market cap (USD)": "market_cap"
     }).astype(float)
