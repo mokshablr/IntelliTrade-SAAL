@@ -11,9 +11,11 @@ class LLMRequest(BaseModel):
 
 class IngestStockData(BaseModel):
     symbol: str
+    interval: str
 
 class IngestCryptoData(BaseModel):
     symbol: str
+    interval: str
 
 @router.get("/")
 def welcome():
@@ -37,11 +39,15 @@ def llm_generate(llm_input: LLMRequest):
 @router.get("/ingest-stock")
 def ingest_stock_route(ingest_details: IngestStockData):
     symbol = ingest_details.symbol
-    ingest_stock(symbol)
+    interval = ingest_details.interval
+    # outputsize = ingest_details.outputsize
+    outputsize = "compact"
+    ingest_stock(symbol, interval, outputsize)
     return {"status": "Stock data ingested successfully"}
 
 @router.get("/ingest-crypto")
 def ingest_crypto_route(ingest_details: IngestCryptoData):
     symbol = ingest_details.symbol
-    ingest_crypto(symbol)
+    interval = ingest_details.interval
+    ingest_crypto(symbol, interval)
     return {"status": "Crypto data ingested successfully"}
