@@ -15,19 +15,6 @@ st.set_page_config(page_title="IntelliTrade", page_icon="📈", layout="wide")
 st.title("📈 IntelliTrade")
 st.caption("Your comprehensive trading platform for learning and strategy testing")
 
-chart.render()
-
-# Create tabs
-tab1, tab2 = st.tabs(["🎓 Learning", "🧪 Strategy Testing"])
-
-# Tab 1: Learning (Chatbot)
-with tab1:
-    assistant.render()
-
-# # Tab 2: Strategy Testing
-with tab2:
-    strategy.render()
-
 # Sidebar with additional info
 with st.sidebar:
     st.header("ℹ️ About IntelliTrade")
@@ -53,3 +40,17 @@ with st.sidebar:
     # - [Risk Management](https://example.com)
     # - [Technical Analysis](https://example.com)
     # """)
+
+chart.render()
+
+# Create tabs
+tab1, tab2 = st.tabs(["🎓 Learning", "🧪 Strategy Testing"])
+
+# Tab 1: Learning (Chatbot)
+with tab1:
+    assistant.render()
+
+# # Tab 2: Strategy Testing
+with tab2:
+    strategy.render()
+
