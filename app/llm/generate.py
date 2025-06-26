@@ -31,16 +31,6 @@ chat = client.chats.create(
             system_instruction=system_instruction),
         )
 
-# while True:
-#     user_input = input("You: ")
-#     response = chat.send_message_stream(user_input)
-#
-#     print("IntelliTrade: ", end="")
-#     for chunk in response:
-#         print(chunk.text, end="")
-#
-#     print("\n")
-
 def generate_response(user_input):
     try:
         response = chat.send_message(user_input)
