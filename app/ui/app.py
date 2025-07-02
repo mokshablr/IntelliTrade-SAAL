@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 
 import assistant
 import strategy
+import auto_test
 import chart
 
 load_dotenv()
@@ -44,13 +45,17 @@ with st.sidebar:
 chart.render()
 
 # Create tabs
-tab1, tab2 = st.tabs(["🎓 Learning", "🧪 Strategy Testing"])
+tab1, tab2, tab3 = st.tabs(["🎓 Learning", "🧪📊 Grid Search Strategy", "🧪 Custom Strategy Testing"])
 
 # Tab 1: Learning (Chatbot)
 with tab1:
     assistant.render()
 
-# # Tab 2: Strategy Testing
+# # Tab 2: Grid Search Strategy Testing
 with tab2:
+    auto_test.render()
+
+# # Tab 3: Custom Strategy Testing
+with tab3:
     strategy.render()
 

@@ -53,57 +53,160 @@ def ingest_data(symbol, asset_type, interval):
     except Exception as e:
         st.error(f"Failed to contact ingestion service: {e}")
 
+def get_time_delta(interval):
+    if interval == "1min":
+        return timedelta(hours=1)
+    elif interval == "5min":
+        return timedelta(hours=6)
+    elif interval == "15min":
+        return timedelta(days=1)
+    elif interval == "30min":
+        return timedelta(days=2)
+    elif interval == "60min":
+        return timedelta(days=3)
+    elif interval == "daily":
+        return timedelta(days=30)
+    elif interval == "weekly":
+        return timedelta(weeks=12)
+    elif interval == "monthly":
+        return timedelta(weeks=52)
+    else:
+        return timedelta(days=30)  # fallback to full range
+
 # --- Main render function ---
 def render():
-    # Layout for filters at the top
+    trades_list = st.session_state.get("trades_list", None)
+
+    # --- Chart Settings UI ---
     st.subheader("Chart Settings")
     col1, col2, col3 = st.columns([1, 2, 2])
 
     with col1:
-        asset_type = st.selectbox("Asset Type", ["crypto", "stock"])
+        asset_type = st.selectbox("Asset Type", ["crypto", "stock"], key="asset_type")
 
     with col2:
         default_symbol = "BTC" if asset_type == "crypto" else "TSLA"
-        symbol = st.text_input("Search Symbol", default_symbol)
+        symbol = st.text_input("Search Symbol", default_symbol, key="symbol")
 
     with col3:
-        if asset_type == "crypto":
-            interval = st.selectbox("Interval", ["daily", "weekly", "monthly"])
-        else:
-            interval = st.selectbox("Interval", ["1min", "5min", "15min", "30min", "60min", "daily", "weekly", "monthly"])
+        interval_options = ["daily", "weekly", "monthly"] if asset_type == "crypto" else \
+                           ["1min", "5min", "15min", "30min", "60min", "daily", "weekly", "monthly"]
+        interval = st.selectbox("Interval", interval_options, key="interval", index=2 if asset_type != "crypto" else 0)
 
-    # Load data
+    asset_type = st.session_state.asset_type
+    symbol = st.session_state.symbol
+    interval = st.session_state.interval
+
+    # --- Load Data ---
     df = load_sqlite_data(symbol.upper(), asset_type, interval)
 
     if is_data_stale(df):
-        loading_msg = st.empty()
+        with st.spinner("Data is missing or outdated. Fetching fresh data..."):
+            ingest_data(symbol, asset_type, interval)
+            st.cache_data.clear()  # Clear cache
+            df = load_sqlite_data(symbol, asset_type, interval)
 
-        # Show loading message
-        loading_msg.info("Data is missing or outdated. Fetching fresh data...")
-
-        # st.info("Data is missing or outdated. Fetching fresh data...")
-        ingest_data(symbol, asset_type, interval)
-        st.cache_data.clear()  # Clear cache after ingestion
-        loading_msg.empty()
-        df = load_sqlite_data(symbol, asset_type, interval)
-
-    # Display chart if data is available
+    # --- Chart Rendering ---
     if not df.empty:
-        fig = go.Figure(data=[go.Candlestick(
+        fig = go.Figure()
+
+        # Price candlestick
+        fig.add_trace(go.Candlestick(
             x=df["timestamp"],
             open=df["open"],
             high=df["high"],
             low=df["low"],
-            close=df["close"]
-        )])
+            close=df["close"],
+            name="Price"
+        ))
+
+        # Only plot if trades are from current symbol+interval
+        if trades_list:
+            df_times = pd.to_datetime(df["timestamp"])
+            df_range = (df_times.min(), df_times.max())
+
+            # Filter only trades that fall in this visible range
+            trades_filtered = [t for t in trades_list if df_range[0] <= pd.to_datetime(t["timestamp"]) <= df_range[1]]
+
+            if trades_filtered:
+                buy_x = []
+                buy_y = []
+                sell_x = []
+                sell_y = []
+
+                for t in trades_filtered:
+                    ts = pd.to_datetime(t["timestamp"])
+                    price = t["price"]
+                    if t["action"] == "buy":
+                        buy_x.append(ts)
+                        buy_y.append(price)
+                    elif t["action"] == "sell":
+                        sell_x.append(ts)
+                        sell_y.append(price)
+
+                fig.add_trace(go.Scatter(
+                    x=buy_x,
+                    y=buy_y,
+                    mode='markers',
+                    name='Buy',
+                    marker=dict(symbol='triangle-up', size=10, color='green'),
+                    hovertemplate='Buy: %{y:.2f}<br>%{x}<extra></extra>'
+                ))
+
+                fig.add_trace(go.Scatter(
+                    x=sell_x,
+                    y=sell_y,
+                    mode='markers',
+                    name='Sell',
+                    marker=dict(symbol='triangle-down', size=10, color='red'),
+                    hovertemplate='Sell: %{y:.2f}<br>%{x}<extra></extra>'
+                ))
+
+        # Ensure datetime index
+        df.index = pd.to_datetime(df["timestamp"])
+        df = df.sort_index()
+
+        # Calculate x-axis range to show latest data based on interval
+        end_date = df.index.max()
+        start_date = end_date - get_time_delta(interval)
+
+        # Filter for visible range to calculate y-axis limits
+        visible_df = df[(df.index >= start_date) & (df.index <= end_date)]
+
+        y_min = visible_df['low'].min()
+        y_max = visible_df['high'].max()
+        y_padding = (y_max - y_min) * 0.05 if y_max > y_min else 1  # safe padding
+
+        fig.add_trace(go.Scatter(
+            x=[start_date, end_date],
+            y=[y_min - y_padding, y_max + y_padding],
+            mode='lines',
+            line=dict(color='rgba(0,0,0,0)'),
+            showlegend=False,
+            hoverinfo='none',
+        ))
 
         fig.update_layout(
             title=f"{symbol.upper()} - {interval}",
-            xaxis_rangeslider_visible=False,
-            height=500
+            xaxis_title="Date",
+            yaxis_title="Price",
+            xaxis=dict(
+                type="date",
+                range=[start_date, end_date],
+                rangeslider=dict(visible=True),
+                rangeselector=dict(
+                    buttons=list([
+                        dict(count=1, label="1d", step="day", stepmode="backward"),
+                        dict(count=7, label="1w", step="day", stepmode="backward"),
+                        dict(count=1, label="1m", step="month", stepmode="backward"),
+                        dict(step="all")
+                    ])
+                ),
+            ),
+            yaxis=dict(autorange=True, fixedrange=False,),
+            height=500,
         )
+
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("No data available for the selected options.")
-
-print(os.getenv("API_BASE_URL"))
