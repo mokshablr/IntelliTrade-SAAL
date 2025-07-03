@@ -298,6 +298,12 @@ def get_adaptive_strategy_grid(data_length):
         }},
     }
 
+def sanitize(value):
+    """Ensure value is JSON-serializable float"""
+    if pd.isna(value) or value in [np.inf, -np.inf]:
+        return 0.0
+    return float(value)
+
 
 # --- Enhanced Backtest Function ---
 
@@ -350,21 +356,37 @@ def backtest(df, signals, initial_capital=10000, transaction_cost=0.001):
     cleaned_equity_curve = equity_curve.replace([np.inf, -np.inf], np.nan).fillna(method='ffill').fillna(method='bfill')
 
     
+    # return {
+    #     'pnl': pnl,
+    #     'sharpe': sr,
+    #     'sortino': sortino,
+    #     'calmar': calmar,
+    #     'max_drawdown': mdd,
+    #     'win_rate': wr,
+    #     'trades': trades,
+    #     'annual_return': annual_return,
+    #     'volatility': volatility,
+    #     'equity_curve': [
+    #         [str(date), float(value)] for date, value in cleaned_equity_curve.items()
+    #     ],
+    #     'trades_list': trades_list
+    # }
     return {
-        'pnl': pnl,
-        'sharpe': sr,
-        'sortino': sortino,
-        'calmar': calmar,
-        'max_drawdown': mdd,
-        'win_rate': wr,
-        'trades': trades,
-        'annual_return': annual_return,
-        'volatility': volatility,
-        'equity_curve': [
-            [str(date), float(value)] for date, value in cleaned_equity_curve.items()
-        ],
-        'trades_list': trades_list
+    'pnl': sanitize(pnl),
+    'sharpe': sanitize(sr),
+    'sortino': sanitize(sortino),
+    'calmar': sanitize(calmar),
+    'max_drawdown': sanitize(mdd),
+    'win_rate': sanitize(wr),
+    'trades': int(trades),
+    'annual_return': sanitize(annual_return),
+    'volatility': sanitize(volatility),
+    'equity_curve': [
+        [str(date), sanitize(value)] for date, value in cleaned_equity_curve.items()
+    ],
+    'trades_list': trades_list
     }
+
 
 # --- Enhanced Grid Search ---
 

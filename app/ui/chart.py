@@ -3,7 +3,7 @@ import pandas as pd
 import sqlite3
 import plotly.graph_objects as go
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import requests
 from dotenv import load_dotenv
 
@@ -38,8 +38,20 @@ def load_sqlite_data(symbol, asset_type, interval):
 def is_data_stale(df: pd.DataFrame) -> bool:
     if df.empty:
         return True
+
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+
+    # Localize if timestamps are naive (i.e., tz is None)
+    if df["timestamp"].dt.tz is None:
+        df["timestamp"] = df["timestamp"].dt.tz_localize("America/New_York")
+
+    # Convert to UTC
+    df["timestamp"] = df["timestamp"].dt.tz_convert("UTC")
+
     latest_ts = df["timestamp"].max()
-    return latest_ts < datetime.utcnow() - timedelta(days=1) # check if data is more than a day old
+
+    return latest_ts < datetime.now(timezone.utc) - timedelta(days=1)
+
 
 def ingest_data(symbol, asset_type, interval):
     base_url = os.getenv("API_BASE_URL")
@@ -92,6 +104,15 @@ def render():
         interval_options = ["daily", "weekly", "monthly"] if asset_type == "crypto" else \
                            ["1min", "5min", "15min", "30min", "60min", "daily", "weekly", "monthly"]
         interval = st.selectbox("Interval", interval_options, key="interval", index=2 if asset_type != "crypto" else 0)
+    
+    # Since changes in input values causes page render. Page render ends up calling ingest API unnecessarily
+    ingest_requested = st.button("🔄 Ingest Fresh Data")
+
+    if ingest_requested:
+        st.session_state["ingest_requested"] = True
+
+    if "ingest_requested" not in st.session_state:
+        st.session_state["ingest_requested"] = False
 
     asset_type = st.session_state.asset_type
     symbol = st.session_state.symbol
@@ -100,11 +121,29 @@ def render():
     # --- Load Data ---
     df = load_sqlite_data(symbol.upper(), asset_type, interval)
 
+    # Ensure timestamp is timezone-aware in Eastern Time (ET)
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    if df["timestamp"].dt.tz is None:
+        df["timestamp"] = df["timestamp"].dt.tz_localize("America/New_York")
+    else:
+        df["timestamp"] = df["timestamp"].dt.tz_convert("America/New_York")
+
     if is_data_stale(df):
-        with st.spinner("Data is missing or outdated. Fetching fresh data..."):
+        st.warning("⚠️ Data is stale or missing. Please click '🔄 Ingest Fresh Data' to fetch.")
+
+    if st.session_state["ingest_requested"]:
+        with st.spinner("Fetching fresh data..."):
             ingest_data(symbol, asset_type, interval)
-            st.cache_data.clear()  # Clear cache
+            st.cache_data.clear()
             df = load_sqlite_data(symbol, asset_type, interval)
+        st.session_state["ingest_requested"] = False  # Reset flag after ingestion
+
+    # Convert the fresh data to ET
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    if df["timestamp"].dt.tz is None:
+        df["timestamp"] = df["timestamp"].dt.tz_localize("America/New_York")
+    else:
+        df["timestamp"] = df["timestamp"].dt.tz_convert("America/New_York")
 
     # --- Chart Rendering ---
     if not df.empty:
@@ -126,7 +165,17 @@ def render():
             df_range = (df_times.min(), df_times.max())
 
             # Filter only trades that fall in this visible range
-            trades_filtered = [t for t in trades_list if df_range[0] <= pd.to_datetime(t["timestamp"]) <= df_range[1]]
+            eastern = timezone(timedelta(hours=-5))
+            def ensure_et(ts):
+                dt = pd.to_datetime(ts)
+                if dt.tzinfo is None or dt.tz is None:
+                    return dt.tz_localize(eastern)
+                return dt.tz_convert(eastern)
+
+            trades_filtered = [
+                t for t in trades_list
+                if ensure_et(df_range[0]) <= ensure_et(t["timestamp"]) <= ensure_et(df_range[1])
+            ]
 
             if trades_filtered:
                 buy_x = []
@@ -135,7 +184,7 @@ def render():
                 sell_y = []
 
                 for t in trades_filtered:
-                    ts = pd.to_datetime(t["timestamp"])
+                    ts = pd.to_datetime(t["timestamp"]).tz_localize("America/New_York")
                     price = t["price"]
                     if t["action"] == "buy":
                         buy_x.append(ts)
@@ -163,6 +212,8 @@ def render():
                 ))
 
         # Ensure datetime index
+        # df.index = df["timestamp"]
+        # df = df.sort_index()
         df.index = pd.to_datetime(df["timestamp"])
         df = df.sort_index()
 
