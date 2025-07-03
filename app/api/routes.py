@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from pandas.core.algorithms import rank
 from pydantic import BaseModel
+from datetime import date
 
 from app.llm.generate import generate_response
 from app.data.ingest import ingest_stock, ingest_crypto
@@ -25,6 +26,8 @@ class AutoTestRequest(BaseModel):
     asset_type: str
     symbol: str
     interval: str
+    start_date: date
+    end_date: date
 
 @router.get("/")
 def welcome():
@@ -71,7 +74,8 @@ def auto_backtest(autotest_request:AutoTestRequest):
     asset_type = autotest_request.asset_type
     symbol = autotest_request.symbol
     interval = autotest_request.interval
-    print(f"ini:{initial_capital}, rank: {ranking_metric}, type:{asset_type}, sym:{symbol},inter:{interval}")
-    response = autotest(initial_capital, ranking_metric, asset_type, symbol, interval)
+    start_date = autotest_request.start_date
+    end_date = autotest_request.end_date
+    response = autotest(initial_capital, ranking_metric, asset_type, symbol, interval, start_date, end_date)
     return response
 

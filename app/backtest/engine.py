@@ -490,12 +490,22 @@ def analyze_results(results, top_n=10):
               f"{stats['sharpe']:<8.3f} {stats['sortino']:<8.3f} "
               f"{stats['max_drawdown']*100:<8.2f} {int(stats['trades']):<8}")
 
-def autotest(initial_capital, ranking_metric, asset_type, symbol, interval):
+def autotest(initial_capital, ranking_metric, asset_type, symbol, interval, start_date, end_date):
     df = fetch_data(asset_type, symbol, interval, "app/db/market_data.db")
     if df is None or df.empty:
         return {
             "status": "error",
             "message": "Failed to fetch data or no data available."
+        }
+
+    # Filter the data by start and end date
+    df.index = pd.to_datetime(df.index)  # Ensure datetime index
+    df = df.loc[(df.index.date >= start_date) & (df.index.date <= end_date)]
+
+    if df.empty:
+        return {
+            "status": "error",
+            "message": f"No data in the selected date range: {start_date} to {end_date}"
         }
 
     results = grid_search(df, initial_capital, ranking_metric)
@@ -543,6 +553,7 @@ def autotest(initial_capital, ranking_metric, asset_type, symbol, interval):
             "best_strategy": best_strategy
         }
     }
+
 
 # --- Main Execution ---
 

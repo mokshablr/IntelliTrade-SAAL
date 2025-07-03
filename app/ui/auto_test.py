@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 from dotenv import load_dotenv
+import datetime
 import os
 
 load_dotenv()
@@ -18,6 +19,20 @@ def render():
 
     with col2:
         ranking_metric = st.selectbox("Ranking Metric", ["sharpe", "sortino", "calmar", "pnl", "max_drawdown"])
+
+    today = datetime.date.today()
+    default_start = today - datetime.timedelta(days=180)  # 6 months ago
+
+    with col3:
+        col3_1, col3_2 = st.columns(2)
+        with col3_1:
+            start_date = st.date_input("Start Date", default_start)
+        with col3_2:
+            end_date = st.date_input("End Date", today)
+
+    # Validate dates
+    if start_date >= end_date:
+        st.warning("⚠️ Start Date must be earlier than End Date.")
 
     # Fetching from the main chart
     asset_type = st.session_state.get("asset_type")
@@ -39,8 +54,10 @@ def render():
                 "ranking_metric": ranking_metric,
                 "asset_type": asset_type,
                 "symbol": symbol,
-                "interval": interval
-            })
+                "interval": interval,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat()
+                })
 
             if response.status_code != 200:
                 st.error(f"❌ API Error: {response.status_code}")
@@ -85,6 +102,25 @@ def render():
             trades_list = best_stats.get("trades_list", [])
 
             st.session_state["trades_list"] = trades_list
+
+            # Trades list
+            if trades_list:
+                st.subheader("📄 Executed Trades")
+
+                # Convert trade list into DataFrame
+                df_trades = pd.DataFrame(trades_list)
+
+                # Convert timestamp if present
+                if "timestamp" in df_trades.columns:
+                    df_trades["timestamp"] = pd.to_datetime(df_trades["timestamp"])
+                    df_trades = df_trades.rename(columns={"timestamp": "Time"})
+
+                # Capitalize all column names for display
+                df_trades.columns = [col.replace("_", " ").title() for col in df_trades.columns]
+
+                # Display the trades table
+                st.dataframe(df_trades, use_container_width=True)
+
 
             st.subheader(f"📊 Equity Curve for Best Strategy: {best_name} ({best_params})")
 
@@ -163,15 +199,18 @@ def render():
             st.subheader("📋 Best Strategy Stats")
             col1, col2, col3 = st.columns(3)
             col1.metric("PnL ($)", f"${best_stats['pnl']:.2f}")
-            col1.metric("PnL (%)", f"{best_stats['pnl_percent']}%")
             col2.metric("Sharpe", f"{best_stats['sharpe_ratio']:.2f}")
             col3.metric("Sortino", f"{best_stats['sortino_ratio']:.2f}")
-            col1.metric("Calmar", f"{best_stats['calmar_ratio']:.2f}")
+
+            col1.metric("PnL (%)", f"{best_stats['pnl_percent']}%")
             col2.metric("Max Drawdown", f"{best_stats['max_drawdown']:.2%}")
             col3.metric("Win Rate", f"{best_stats['win_rate']:.2%}")
-            col1.metric("Annual Return", f"{best_stats['annual_return']:.2%}")
+
+            col1.metric("Calmar", f"{best_stats['calmar_ratio']:.2f}")
             col2.metric("Volatility", f"{best_stats['volatility']:.2%}")
             col3.metric("Total Trades", f"{int(best_stats['total_trades'])}")
+
+            col1.metric("Annual Return", f"{best_stats['annual_return']:.2%}")
 
         except Exception as e:
             st.error(f"❌ An error occurred: {e}")
