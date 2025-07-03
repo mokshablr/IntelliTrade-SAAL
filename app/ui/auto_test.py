@@ -73,12 +73,13 @@ def render():
             summary = data["summary"]
             top_results = data["top_strategies"]
             best_strategy = data["best_strategy"]
+            all_results = data["all_results"]
 
             # --- Display Summary ---
             st.success(f"✅ Data loaded: {summary['data_points']} candles from {summary['from']} to {summary['to']}")
 
             # --- Table: Top Strategies ---
-            st.subheader("🏆 Top 10 Strategies")
+            st.subheader("🏆 Top Parameters for Strategies")
 
             df_table = pd.DataFrame([{
                 "Strategy": row["strategy"],
@@ -96,6 +97,41 @@ def render():
 
             st.dataframe(df_table)
 
+            st.subheader("🔎 Parameter Exploration Per Strategy")
+
+            for row in top_results:
+                strat = row["strategy"]
+                if strat not in all_results:
+                    continue
+
+                with st.expander(f"📊 Show all parameter combinations for {strat}"):
+                    # Sort entries by the selected ranking metric
+                    entries = all_results[strat]
+
+                    # Defensive: handle max_drawdown as lower is better (less negative)
+                    if ranking_metric == "max_drawdown":
+                        sorted_entries = sorted(entries, key=lambda x: x["stats"][ranking_metric])
+                    else:
+                        sorted_entries = sorted(entries, key=lambda x: x["stats"][ranking_metric], reverse=True)
+
+                    # Build the DataFrame
+                    full_table = pd.DataFrame([{
+                        "Parameters": str(entry["parameters"]),
+                        "PnL ($)": round(entry["stats"]["pnl"], 2),
+                        "PnL (%)": round(entry["stats"]["pnl_percent"], 2),
+                        "Annual Return": round(entry["stats"]["annual_return"] * 100, 2),
+                        "Sharpe Ratio": round(entry["stats"]["sharpe_ratio"], 3),
+                        "Sortino Ratio": round(entry["stats"]["sortino_ratio"], 3),
+                        "Calmar Ratio": round(entry["stats"]["calmar_ratio"], 3),
+                        "Max Drawdown (%)": round(entry["stats"]["max_drawdown"] * 100, 2),
+                        "Volatility": round(entry["stats"]["volatility"] * 100, 2),
+                        "Trades": int(entry["stats"]["total_trades"])
+                    } for entry in sorted_entries])
+
+
+                    st.dataframe(full_table, use_container_width=True)
+
+
             best_name = best_strategy["strategy"]
             best_params = best_strategy["parameters"]
             best_stats = best_strategy["stats"]
@@ -105,7 +141,7 @@ def render():
 
             # Trades list
             if trades_list:
-                st.subheader("📄 Executed Trades")
+                st.subheader("💸 Executed Trades")
 
                 # Convert trade list into DataFrame
                 df_trades = pd.DataFrame(trades_list)
@@ -120,6 +156,7 @@ def render():
 
                 # Display the trades table
                 st.dataframe(df_trades, use_container_width=True)
+
 
 
             st.subheader(f"📊 Equity Curve for Best Strategy: {best_name} ({best_params})")

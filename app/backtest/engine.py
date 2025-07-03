@@ -3,6 +3,7 @@ import numpy as np
 import sqlite3
 from itertools import product
 import pandas_ta as ta
+from collections import defaultdict
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -355,22 +356,6 @@ def backtest(df, signals, initial_capital=10000, transaction_cost=0.001):
 
     cleaned_equity_curve = equity_curve.replace([np.inf, -np.inf], np.nan).fillna(method='ffill').fillna(method='bfill')
 
-    
-    # return {
-    #     'pnl': pnl,
-    #     'sharpe': sr,
-    #     'sortino': sortino,
-    #     'calmar': calmar,
-    #     'max_drawdown': mdd,
-    #     'win_rate': wr,
-    #     'trades': trades,
-    #     'annual_return': annual_return,
-    #     'volatility': volatility,
-    #     'equity_curve': [
-    #         [str(date), float(value)] for date, value in cleaned_equity_curve.items()
-    #     ],
-    #     'trades_list': trades_list
-    # }
     return {
     'pnl': sanitize(pnl),
     'sharpe': sanitize(sr),
@@ -389,84 +374,65 @@ def backtest(df, signals, initial_capital=10000, transaction_cost=0.001):
 
 
 # --- Enhanced Grid Search ---
-
 def grid_search(df, initial_capital=10000, ranking_metric='sharpe'):
-    """
-    Grid search with configurable ranking metric and adaptive parameters
-    """
-    results = []
+    all_results = defaultdict(list)
     strategy_grid = get_adaptive_strategy_grid(len(df))
-    
+
     print(f"Adaptive parameter grid created for {len(df)} data points")
-    
+
     for strat_name, details in strategy_grid.items():
         func = details['func']
         param_grid = details['params']
-        
         print(f"Testing {strat_name} strategy...")
-        
+
         if not param_grid or not any(param_grid.values()):
-            print(f"  Skipping {strat_name} - insufficient data for parameters")
             continue
-        
-        if not param_grid:
-            try:
-                signals = func(df.copy())
-                stats = backtest(df, signals, initial_capital)
-                results.append((strat_name, {}, stats))
-            except Exception as e:
-                print(f"[ERROR] {strat_name} failed: {e}")
-        else:
-            keys, values = zip(*param_grid.items())
-            
-            # Filter out empty parameter lists
-            values = [v for v in values if v]
-            if not all(values):
-                print(f"  Skipping {strat_name} - no valid parameters for data length")
+
+        keys, values = zip(*param_grid.items())
+        total_combos = len(list(product(*values)))
+        completed = 0
+
+        for combo in product(*values):
+            params = dict(zip(keys, combo))
+
+            # Validate
+            if strat_name in ['SMA', 'EMA'] and params['short'] >= params['long']:
                 continue
-                
-            total_combos = len(list(product(*values)))
-            completed = 0
-            
-            for combo in product(*values):
-                params = dict(zip(keys, combo))
-                
-                # Skip invalid parameters
-                if strat_name in ['SMA', 'EMA'] and params['short'] >= params['long']:
-                    continue
-                if strat_name == 'RSI' and params['low'] >= params['high']:
-                    continue
-                if strat_name in ['Stochastic', 'Williams_R'] and params['oversold'] >= params['overbought']:
-                    continue
-                
-                try:
-                    signals = func(df.copy(), **params)
-                    stats = backtest(df, signals, initial_capital)
-                    
-                    # Only add results with meaningful performance
-                    if stats['trades'] > 0:
-                        results.append((strat_name, params, stats))
-                    
-                    completed += 1
-                    
-                    if completed % 20 == 0:
-                        print(f"  Completed {completed}/{total_combos} combinations")
-                        
-                except Exception as e:
-                    print(f"[ERROR] {strat_name} {params} failed: {e}")
-    
-    # Rank results
-    if not results:
-        print("No valid results found - data may be insufficient for backtesting")
-        return None
-    
-    # Sort by ranking metric (higher is better for most metrics except max_drawdown)
+            if strat_name == 'RSI' and params['low'] >= params['high']:
+                continue
+            if strat_name in ['Stochastic', 'Williams_R'] and params['oversold'] >= params['overbought']:
+                continue
+
+            try:
+                signals = func(df.copy(), **params)
+                stats = backtest(df, signals, initial_capital)
+                if stats['trades'] > 0:
+                    all_results[strat_name].append((params, stats))
+            except Exception as e:
+                print(f"[ERROR] {strat_name} {params} failed: {e}")
+
+            completed += 1
+            if completed % 20 == 0:
+                print(f"  Completed {completed}/{total_combos} combinations")
+
+    best_results = []
+    for strat_name, result_list in all_results.items():
+        if not result_list:
+            continue
+        if ranking_metric == 'max_drawdown':
+            best = min(result_list, key=lambda x: -x[1][ranking_metric])
+        else:
+            best = max(result_list, key=lambda x: x[1][ranking_metric])
+        best_results.append((strat_name, best[0], best[1]))
+
     if ranking_metric == 'max_drawdown':
-        results.sort(key=lambda x: -x[2][ranking_metric])  # Less negative is better
+        best_results.sort(key=lambda x: -x[2][ranking_metric])
     else:
-        results.sort(key=lambda x: x[2][ranking_metric], reverse=True)
-    
-    return results
+        best_results.sort(key=lambda x: x[2][ranking_metric], reverse=True)
+
+    return best_results, all_results
+
+
 
 # --- Data Fetching ---
 
@@ -515,31 +481,28 @@ def analyze_results(results, top_n=10):
 def autotest(initial_capital, ranking_metric, asset_type, symbol, interval, start_date, end_date):
     df = fetch_data(asset_type, symbol, interval, "app/db/market_data.db")
     if df is None or df.empty:
-        return {
-            "status": "error",
-            "message": "Failed to fetch data or no data available."
-        }
+        return {"status": "error", "message": "Failed to fetch data or no data available."}
 
-    # Filter the data by start and end date
-    df.index = pd.to_datetime(df.index)  # Ensure datetime index
+    df.index = pd.to_datetime(df.index)
     df = df.loc[(df.index.date >= start_date) & (df.index.date <= end_date)]
 
     if df.empty:
-        return {
-            "status": "error",
-            "message": f"No data in the selected date range: {start_date} to {end_date}"
-        }
+        return {"status": "error", "message": "No data in the selected date range."}
 
-    results = grid_search(df, initial_capital, ranking_metric)
+    # best_results, all_results = grid_search(df, initial_capital, ranking_metric)
+    best_results, all_results = grid_search(df, initial_capital, ranking_metric)
 
-    if not results:
-        return {
-            "status": "error",
-            "message": "No valid results found during grid search."
-        }
+    # Sort best_results based on ranking_metric
+    if ranking_metric == "max_drawdown":
+        best_results = sorted(best_results, key=lambda x: x[2][ranking_metric])  # minimize drawdown
+    else:
+        best_results = sorted(best_results, key=lambda x: x[2][ranking_metric], reverse=True)
+
+    if not best_results:
+        return {"status": "error", "message": "No valid results found during grid search."}
 
     top_results = []
-    for strat, params, stats in results[:10]:
+    for strat, params, stats in best_results[:10]:
         top_results.append({
             "strategy": strat,
             "parameters": params,
@@ -559,6 +522,26 @@ def autotest(initial_capital, ranking_metric, asset_type, symbol, interval, star
             },
         })
 
+    full_param_results = {}
+    for strat, results in all_results.items():
+        full_param_results[strat] = []
+        for param_set, stats in results:
+            full_param_results[strat].append({
+                "parameters": param_set,
+                "stats": {
+                    "pnl": round(stats['pnl'], 2),
+                    "pnl_percent": round((stats['pnl'] / initial_capital) * 100, 2),
+                    "annual_return": round(stats['annual_return'], 4),
+                    "sharpe_ratio": round(stats['sharpe'], 4),
+                    "sortino_ratio": round(stats['sortino'], 4),
+                    "calmar_ratio": round(stats['calmar'], 4),
+                    "max_drawdown": round(stats['max_drawdown'], 4),
+                    "win_rate": round(stats['win_rate'], 4),
+                    "volatility": round(stats['volatility'], 4),
+                    "total_trades": int(stats['trades']),
+                }
+            })
+
     best_strategy = top_results[0]
 
     return {
@@ -572,9 +555,11 @@ def autotest(initial_capital, ranking_metric, asset_type, symbol, interval, star
                 "to": str(df.index[-1]),
             },
             "top_strategies": top_results,
-            "best_strategy": best_strategy
+            "best_strategy": best_strategy,
+            "all_results": full_param_results
         }
     }
+
 
 
 # --- Main Execution ---
